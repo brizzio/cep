@@ -1,128 +1,229 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Upload XLS Workbook</title>
-  <!-- Include the XLSX library -->
-  <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
-  <!-- Corrected: Include Cheetah Grid CSS and JS -->
-  <link href="https://unpkg.com/cheetah-grid@2.5.2/dist/cheetah-grid.css" rel="stylesheet" />
-  <script src="https://unpkg.com/cheetah-grid@1.14" defer></script>
-</head>
-<body>
-  <h1>Upload an XLS Workbook</h1>
-  <!-- File input for XLS file upload -->
-  <input type="file" id="upload" accept=".xls, .xlsx" />
-
-  <!-- Div to render the grid -->
-  <div id="grid" style="width: 100%; height: 500px;"></div>
-
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Upload XLS Workbook</title>
+    <!-- Include the Tailwind CSS library -->
+    <link href="https://cdn.jsdelivr.net/npm/tailwindcss@2.2.19/dist/tailwind.min.css" rel="stylesheet">
+    <!-- Include the XLSX library -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+    <!-- Include Cheetah Grid CSS and JS -->
+    <link href="https://unpkg.com/cheetah-grid@2.5.2/dist/cheetah-grid.css" rel="stylesheet" />
+    <script src="https://unpkg.com/cheetah-grid@1.14" defer></script>
+    <!-- Include Alpine.js -->
+    <script src="https://cdn.jsdelivr.net/npm/alpinejs@3.10.0/dist/cdn.min.js" defer></script>
+  </head>
+  <body class="bg-gray-100 p-6" x-data="gridApp()">
+    <div class="max-w-4xl mx-auto p-6 bg-white rounded shadow">
+      <h1 class="text-xl font-semibold mb-4">Atualiza CEP </h1>
+      <!-- File input for XLS file upload -->
+      <input type="file" id="upload" accept=".xls, .xlsx" @change="handleFile"
+             class="block w-full text-sm text-gray-900 border border-gray-300 rounded-lg cursor-pointer bg-gray-50 focus:outline-none mb-4" />
+    
+      <!-- Progress Bar -->
+      <p class="text-xs">Progresso:</p>  
+      <div class="w-full bg-gray-200 rounded-full h-4 mb-4 overflow-hidden">
+        <div x-bind:style="{ width: progress + '%' }"
+             class="bg-green-500 h-full transition-all duration-300 ease-in-out"></div>
+      </div>
+  
+      <!-- Div to render the grid -->
+      <div id="grid" class="border border-gray-300 rounded overflow-hidden shadow-sm" style="width: 100%; height: 500px;"></div>
+  
+      <!-- Button to download the grid content as XLSX -->
+      <button x-on:click="downloadGrid" class="mt-4 bg-blue-600 text-white px-4 py-2 rounded hover:bg-blue-700">
+        Download as XLSX
+      </button>
+    </div>
   <!-- Main script to handle file upload and grid initialization -->
   <script>
-    document.addEventListener('DOMContentLoaded', function() {
-      console.log('DOM fully loaded and parsed');
+    function gridApp() {
+      return {
+        gridData: [],
+        progress: 0, // Initialize progress state
+        async handleFile(event) {
+          console.log('File selected for upload');
+          const file = event.target.files[0];
 
-      const uploadInput = document.getElementById('upload');
-      uploadInput.addEventListener('change', handleFile, false);
-      console.log('File input event listener attached');
-    });
-
-    function handleFile(event) {
-      console.log('File selected for upload');
-      const file = event.target.files[0];
-
-      if (!file) {
-        console.log('No file selected');
-        return;
-      }
-
-      const reader = new FileReader();
-      console.log('Reading file as array buffer');
-
-      reader.onload = function(event) {
-        try {
-          console.log('File read completed, processing data');
-          const data = new Uint8Array(event.target.result);
-
-          console.log('Data loaded, reading workbook');
-          const workbook = XLSX.read(data, { type: 'array' });
-
-          console.log('Workbook loaded successfully:', workbook);
-
-          const firstSheetName = workbook.SheetNames[0];
-          if (!firstSheetName) {
-            console.error('No sheets found in the uploaded file.');
-            alert('The uploaded file has no sheets.');
+          if (!file) {
+            console.log('No file selected');
             return;
           }
 
-          console.log('First sheet name:', firstSheetName);
+          const reader = new FileReader();
+          console.log('Reading file as array buffer');
 
-          const worksheet = workbook.Sheets[firstSheetName];
-          if (!worksheet) {
-            console.error('First sheet could not be loaded.');
-            alert('Unable to load the first sheet.');
-            return;
+          reader.onload = async (event) => {
+            try {
+              console.log('File read completed, processing data');
+              const data = new Uint8Array(event.target.result);
+
+              console.log('Data loaded, reading workbook');
+              const workbook = XLSX.read(data, { type: 'array' });
+
+              console.log('Workbook loaded successfully:', workbook);
+
+              const firstSheetName = workbook.SheetNames[0];
+              if (!firstSheetName) {
+                console.error('No sheets found in the uploaded file.');
+                alert('The uploaded file has no sheets.');
+                return;
+              }
+
+              console.log('First sheet name:', firstSheetName);
+
+              const worksheet = workbook.Sheets[firstSheetName];
+              if (!worksheet) {
+                console.error('First sheet could not be loaded.');
+                alert('Unable to load the first sheet.');
+                return;
+              }
+
+              const jsonData = XLSX.utils.sheet_to_json(worksheet, { header: 1 });
+              console.log('Sheet data converted to JSON:', jsonData);
+
+              if (jsonData.length > 0) {
+                console.log('Initializing Cheetah Grid with data');
+                this.gridData = jsonData.slice(1).map(row => {
+                  const rowData = {};
+                  row.forEach((cell, index) => {
+                    rowData[jsonData[0][index]] = cell !== undefined ? cell : ''; // Handle undefined cells
+                  });
+                  return rowData;
+                });
+                this.initializeCheetahGrid();
+                await this.processGridData();
+              } else {
+                console.log('No data found in the sheet.');
+                alert('No data found in the sheet.');
+              }
+            } catch (error) {
+              console.error('Error processing file:', error);
+              alert('An error occurred while processing the file. Check console for details.');
+            }
+          };
+
+          reader.onerror = function(event) {
+            console.error('Error reading file:', event.target.error);
+            alert('Failed to read the file. Please try again.');
+          };
+
+          reader.readAsArrayBuffer(file);
+        },
+
+        async processGridData() {
+          const delay = ms => new Promise(resolve => setTimeout(resolve, ms));
+          this.progress = 0; // Reset progress
+
+          for (let i = 0; i < this.gridData.length; i++) {
+
+            // Update progress
+            this.progress = Math.round(((i + 1) / this.gridData.length) * 100);
+           // if (i < 12 || i > 17) continue; // Optional: Only process first 5 rows
+
+            const row = this.gridData[i];
+            console.log('Row data:', row);
+
+            // Adjust indexes or use column names if applicable
+            const endereco = row['Endereco']?.trim() || '';  
+            const cidade = row['Cidade']?.trim() || '';
+
+            const query = `${endereco} ${cidade}`;
+            console.log('Query:', query);
+
+            if (!query.trim()) {
+              console.warn(`Empty query for row ${i}, skipping.`);
+              continue; // Skip empty queries
+            }
+
+            try {
+              console.log(`Fetching data for query: ${query}`);
+              const response = await fetch(`https://nominatim.openstreetmap.org/search?q=${encodeURIComponent(query)}&format=json`);
+              const data = await response.json();
+              console.log(`Nominatim response:`, data);
+
+              if (data && data.length > 0) {
+                console.log(`parsing object:`, data[0]);
+
+                const displayName = data[0].display_name;
+                const postalCode = displayName.match(/,\s*(\d{5}-\d{3})/); 
+                const lat = data[0].lat || ''
+                const lon = data[0].lon || ''
+
+                console.log(`displayName and postalCode:`, displayName, postalCode);
+
+                row['Endereco'] = data[0].name
+                row['display_name'] = displayName;
+                row['postal_code'] = postalCode ? postalCode[1] : 'Not found';
+
+                row['lat'] = `${lat}`
+                row['lon'] = `${lon}`
+                row['type'] = data[0].type
+
+              } else {
+                row['display_name'] = 'Not found';
+                row['postal_code'] = 'Not found';
+              }
+            } catch (error) {
+              console.error('Error fetching data:', error);
+              row['display_name'] = 'Error';
+              row['postal_code'] = 'Error';
+            }
+
+            await delay(1500); // Wait for 1.5 seconds between requests
           }
 
-          const jsonData = XLSX.utils.sheet_to_json(worksheet, { header: 1 });
-          console.log('Sheet data converted to JSON:', jsonData);
+          this.initializeCheetahGrid();
+        },
 
-          if (jsonData.length > 0) {
-            console.log('Initializing Cheetah Grid with data');
-            initializeCheetahGrid(jsonData);
-          } else {
-            console.log('No data found in the sheet.');
-            alert('No data found in the sheet.');
+        initializeCheetahGrid() {
+          const gridDiv = document.getElementById('grid');
+
+          if (gridDiv.firstChild) {
+            gridDiv.removeChild(gridDiv.firstChild);
           }
-        } catch (error) {
-          console.error('Error processing file:', error);
-          alert('An error occurred while processing the file. Check console for details.');
+
+          const columns = [...Object.keys(this.gridData[0]).map(key => ({
+            field: key,
+            caption: key,
+            width: 100,
+          })),
+          { field: 'display_name', caption: 'Completo', width: 200 },
+          { field: 'postal_code', caption: 'Cep', width: 100 },
+          { field: 'lat', caption: 'Latitude', width: 100 },
+          { field: 'lon', caption: 'Longitude', width: 100 },
+          { field: 'type', caption: 'Tipo', width: 100 },
+
+        ];
+          
+
+          console.log('Cheetah Grid columns:', columns);
+          console.log('Cheetah Grid data:', this.gridData);
+
+          new cheetahGrid.ListGrid({
+            parentElement: gridDiv,
+            header: columns,
+            records: this.gridData,
+            defaultRowHeight: 24,
+            theme: cheetahGrid.themes.default
+          });
+
+          console.log('Cheetah Grid initialized successfully');
+        },
+
+        downloadGrid() {
+          const ws = XLSX.utils.json_to_sheet(this.gridData);
+          const wb = XLSX.utils.book_new();
+          XLSX.utils.book_append_sheet(wb, ws, 'Sheet1');
+          XLSX.writeFile(wb, 'grid_data.xlsx');
         }
       };
-
-      reader.onerror = function(event) {
-        console.error('Error reading file:', event.target.error);
-        alert('Failed to read the file. Please try again.');
-      };
-
-      reader.readAsArrayBuffer(file);
     }
 
-    function initializeCheetahGrid(data) {
-      const gridDiv = document.getElementById('grid');
-
-      // Define the header based on the first row of data
-      const columns = data[0].map(header => ({
-        field: header,
-        caption: header,
-        width: 100,
-      }));
-
-      // Prepare the data for Cheetah Grid
-      const gridData = data.slice(1).map(row => {
-        const rowData = {};
-        row.forEach((cell, index) => {
-          rowData[data[0][index]] = cell !== undefined ? cell : ''; // Handle undefined cells
-        });
-        return rowData;
-      });
-
-      console.log('Cheetah Grid columns:', columns);
-      console.log('Cheetah Grid data:', gridData);
-
-      // Initialize Cheetah Grid
-      new cheetahGrid.ListGrid({
-        parentElement: gridDiv,
-        header: columns,
-        records: gridData,
-        defaultRowHeight: 24,
-        theme: cheetahGrid.themes.default
-      });
-
-      console.log('Cheetah Grid initialized successfully');
-    }
+    document.addEventListener('alpine:init', () => {
+      Alpine.data('gridApp', gridApp);
+    });
   </script>
 </body>
 </html>
